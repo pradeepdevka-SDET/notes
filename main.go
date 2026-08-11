@@ -4,19 +4,44 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
-	"strconv"
+	"notesapi/store"
+	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq" // driver : imported only for its side effect(registers "postgres")
 )
 
-var db *sql.DB //shared connnection POOL, used by every handler
-
-type Note struct {
-	ID    int    `json:"id"`
-	Title string `json:"title"`
+// shared connnection POOL, used by every handler
+type apiConfig struct {
+	store *store.Store
 }
 
+func startBackgroundWorker(s *store.Store) {
+	ticker := time.NewTicker(10 * time.Second)
+	for range ticker.C { // ticker.C fires a value every 10 second
+		notes, err := s.GetNotes()
+		if err != nil {
+			log.Println("[background] error:", err)
+			continue
+		}
+		log.Printf("[background] there are currently %d notes", len(notes))
+	}
+}
+
+func setupRouter(cfg *apiConfig) *gin.Engine {
+	r := gin.Default()
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	r.GET("/notes", cfg.getNotes)
+	r.POST("/notes", cfg.createNote)
+	r.GET("/notes/:id", cfg.getNoteByID)
+	r.PUT("/notes/:id", cfg.updateNote)
+	r.DELETE("/notes/:id", cfg.deleteNote)
+	return r
+}
 func main() {
 	// http.HandleFunc("/hello",
 	// 	func(w http.ResponseWriter, r *http.Request) {
@@ -25,10 +50,18 @@ func main() {
 	// 	})
 	// fmt.Println("Server running on http://localhost:8080")
 	// http.ListenAndServe(":8080", nil)
-
-	connStr := "postgres://spurge:1411@localhost:5432/notesdb?sslmode=disable"
-	var err error
-	db, err = sql.Open("postgres", connStr)
+	if err := godotenv.Load(); err != nil {
+		log.Println("no .env file found, using real environment variables")
+	}
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		log.Fatal("DB_URL is not set")
+	}
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatal("Open db:", err)
 	}
@@ -37,15 +70,14 @@ func main() {
 	}
 	log.Println("Connected to databse!")
 
-	r := gin.Default() //the router (net/http: http.NewServeMux,plus free logging )
-	r.GET("/notes", getNotes)
-	r.POST("/notes", createNote)
-	r.GET("/notes/:id", getNoteByID)
-	r.PUT("/notes/:id", updateNote)
-	r.DELETE("/notes/:id", deleteNote)
-	r.Run(":8080") // net/http:http.ListernAndServe(":8080",r)
+	cfg := apiConfig{store: store.New(db)}
+	r := setupRouter(&cfg)
+	go startBackgroundWorker(cfg.store) //runs concurently with the web server
+	r.Run(":" + port)                   // net/http:http.ListernAndServe(":8080",r)
+
 }
 
+/*
 // GET /notes -> send back the whole list as JSON
 func getNotes(c *gin.Context) {
 	// C (the "context") hold BOTH the request and the response in one object.
@@ -55,9 +87,10 @@ func getNotes(c *gin.Context) {
 		return
 	}
 	defer rows.Close() // always close rows wehn the function ends
-	result := []Note{}
+
+	result := []models.Note{}
 	for rows.Next() {
-		var n Note
+		var n models.Note
 		if err := rows.Scan(&n.ID, &n.Title); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -76,7 +109,7 @@ func getNotes(c *gin.Context) {
 
 // POST /notes -> read a note from the request body , add it to the list
 func createNote(c *gin.Context) {
-	var newNote Note
+	var newNote models.Note
 
 	// Read the JSON body into newNote. if the body isnt valid reply 400
 	if err := c.ShouldBindJSON(&newNote); err != nil {
@@ -97,7 +130,7 @@ func getNoteByID(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
-	var n Note
+	var n models.Note
 	err = db.QueryRow("SELECT id, title FROM notes where id=($1)", id).Scan(&n.ID, &n.Title)
 	if err != nil && err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -116,7 +149,7 @@ func updateNote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
-	var updated Note
+	var updated models.Note
 	if err := c.ShouldBindJSON(&updated); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -152,3 +185,4 @@ func deleteNote(c *gin.Context) {
 	}
 	c.Status(http.StatusNoContent)
 }
+*/

@@ -14,6 +14,7 @@ func TestHealthRoute(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rec.Code)
 	}
+	
 }
 func TestUnknownRoute(t *testing.T) {
 	router := setupRouter(&apiConfig{})
@@ -23,6 +24,4 @@ func TestUnknownRoute(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", rec.Code)
 	}
-
-	// TODO: assert rec.Code is http.StatusNotFound (404)
 }

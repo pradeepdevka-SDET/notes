@@ -15,7 +15,8 @@ import (
 
 // shared connnection POOL, used by every handler
 type apiConfig struct {
-	store *store.Store
+	store     *store.Store
+	jwtSecret string
 }
 
 func startBackgroundWorker(s *store.Store) {
@@ -35,13 +36,21 @@ func setupRouter(cfg *apiConfig) *gin.Engine {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
-	r.GET("/notes", cfg.getNotes)
-	r.POST("/notes", cfg.createNote)
+	r.POST("/login", cfg.login)
+	r.GET("/notes", cfg.getNotes) //	public
 	r.GET("/notes/:id", cfg.getNoteByID)
-	r.PUT("/notes/:id", cfg.updateNote)
-	r.DELETE("/notes/:id", cfg.deleteNote)
+
+	protected := r.Group("/")
+	protected.Use(cfg.requireAuth)
+	{
+		protected.POST("/notes", cfg.createNote)
+		protected.PUT("/notes/:id", cfg.updateNote)
+		protected.DELETE("/notes/:id", cfg.deleteNote)
+	}
+
 	return r
 }
+
 func main() {
 	// http.HandleFunc("/hello",
 	// 	func(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +79,12 @@ func main() {
 	}
 	log.Println("Connected to databse!")
 
-	cfg := apiConfig{store: store.New(db)}
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET is not set")
+	}
+
+	cfg := apiConfig{store: store.New(db), jwtSecret: jwtSecret}
 	r := setupRouter(&cfg)
 	go startBackgroundWorker(cfg.store) //runs concurently with the web server
 	r.Run(":" + port)                   // net/http:http.ListernAndServe(":8080",r)

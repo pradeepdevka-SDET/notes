@@ -8,7 +8,38 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 )
+
+func (cfg *apiConfig) signup(c *gin.Context) {
+	var creds struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindBodyWithJSON(&creds); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if creds.Username == "" || strings.TrimSpace(creds.Password) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "username and password required"})
+		return
+	}
+	if len(strings.TrimSpace(creds.Password)) < 7 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password should be greator than 6 character"})
+		return
+	}
+	// one-way hash - the plain password is never stored
+	hash, err := bcrypt.GenerateFromPassword([]byte(creds.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not hash password"})
+		return
+	}
+	if err := cfg.store.CreateUser(creds.Username, string(hash)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not create user (username may be taken)"})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "user created"})
+}
 
 func (cfg *apiConfig) requireAuth(c *gin.Context) {
 	header := c.GetHeader("Authorization")
@@ -49,10 +80,18 @@ func (cfg *apiConfig) login(c *gin.Context) {
 	}
 	// Temp: hardcoded check, real apps lok up the user in the DB and
 	// compare a bcrypt-hashed passowrd.
-	if creds.Username != "admin" || creds.Password != "password123" {
+	user, err := cfg.store.GetUserByUsername(creds.Username)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
+	//bcrypt compares the attempt against the stored hash;nil==match
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(creds.Password)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		return
+	}
+	//MATCH : issue the JWT exactly as before
+
 	// BUILD the token's claims - the info written on the wristband
 	claims := jwt.MapClaims{
 		"username": creds.Username,

@@ -13,6 +13,20 @@ type Store struct {
 func New(db *sql.DB) *Store {
 	return &Store{db: db}
 }
+
+func (s *Store) CreateUser(username, passwordHash string) error {
+	_, err := s.db.Exec("INSERT INTO users (username, password_hash) VALUES ($1,$2)",
+		username, passwordHash)
+	return err
+}
+
+func (s *Store) GetUserByUsername(username string) (models.User, error) {
+	var u models.User
+	err := s.db.QueryRow("SELECT id,username,password_hash FROM users WHERE username = $1",
+		username).Scan(&u.Id, &u.Username, &u.PasswordHash)
+	return u, err
+}
+
 func (s *Store) GetNotes() ([]models.Note, error) {
 	rows, err := s.db.Query("SELECT id, title FROM notes ORDER BY id")
 	if err != nil {

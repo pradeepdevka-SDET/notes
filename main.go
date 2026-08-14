@@ -36,6 +36,7 @@ func setupRouter(cfg *apiConfig) *gin.Engine {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+	r.POST("/signup", cfg.signup)
 	r.POST("/login", cfg.login)
 	r.GET("/notes", cfg.getNotes) //	public
 	r.GET("/notes/:id", cfg.getNoteByID)

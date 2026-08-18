@@ -1,27 +1,27 @@
 name : CI
 
 on:
-  push :
+  push:
     branches: [main]
-  pull_requests:
+  pull_request:
 
-  jobs:
-    build-and-test:
-      runs-on: ubuntu-latest
-      steps:
-        - name: Check out code
-          uses: actions/checkout@4
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
 
-        - name: Set up Go
-          uses: actions/setup-go@v5
-          with:
-            go-version: '1.26'
-          
-        - name: Vet
-          run: go vet ./...
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
         
-        - name: Build
-          run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      
+      - name: Build
+        run: go build ./...
 
-        - name: Test
-          run: go test ./...
+      - name: Test
+        run: go test ./...
